@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tool Tính Toán Subnet & IP</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f0f4f9; display: flex; justify-content: center; padding: 40px 10px; margin: 0; }
+        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 450px; }
+        h2 { margin-top: 0; color: #1a73e8; text-align: center; font-size: 20px; }
+        label { display: block; margin-bottom: 8px; font-weight: bold; color: #333; }
+        input { width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 16px; margin-bottom: 15px; }
+        .result { background: #f8f9fa; border: 1px solid #e0e0e0; padding: 15px; border-radius: 8px; }
+        .row { margin-bottom: 10px; font-size: 14px; }
+        .row:last-child { margin-bottom: 0; }
+        .val { font-weight: bold; color: #1a73e8; }
+        .highlight { font-weight: bold; color: #0f9d58; font-size: 15px; }
+        .error { color: #d93025; font-size: 14px; font-weight: bold; }
+        hr { border: 0; border-top: 1px solid #e0e0e0; margin: 10px 0; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>Tra Cứu IP & Subnet Mask</h2>
+    <label for="ipInput">Nhập IP/Subnet:</label>
+    <input type="text" id="ipInput" placeholder="Vd: 192.168.1.50/24 hoặc 255.255.255.0" oninput="calculate()">
+    
+    <div id="output" class="result" style="display:none;"></div>
+    <div id="error" class="error"></div>
+</div>
+
+<script>
+function ipToLong(ip) {
+    return ip.split('.').reduce((acc, octet) => (acc << 8) + parseInt(octet, 10), 0) >>> 0;
+}
+
+function longToIp(long) {
+    return [(long >>> 24), (long >> 16 & 255), (long >> 8 & 255), (long & 255)].join('.');
+}
+
+function calculate() {
+    let input = document.getElementById('ipInput').value.trim();
+    let out = document.getElementById('output');
+    let err = document.getElementById('error');
+    
+    out.style.display = 'none';
+    err.innerText = '';
+    if (!input) return;
+
+    let ipStr = "0.0.0.0", cidr = 24;
+
+    try {
+        if (input.includes('/')) {
+            let parts = input.split('/');
+            ipStr = parts[0] || "0.0.0.0";
+            cidr = parseInt(parts[1], 10);
+        } else if (input.includes(' ')) {
+            let parts = input.split(/\s+/);
+            ipStr = parts[0];
+            cidr = maskToCidr(parts[1]);
+        } else if (input.split('.').length === 4 && maskToCidr(input) !== null) {
+            cidr = maskToCidr(input);
+        } else if (!isNaN(input) && parseInt(input) >= 0 && parseInt(input) <= 32) {
+            cidr = parseInt(input, 10);
+        } else if (input.split('.').length === 4) {
+            ipStr = input;
+            cidr = 32;
+        } else {
+            throw new Error();
+        }
+
+        if (isNaN(cidr) || cidr < 0 || cidr > 32) throw new Error();
+
+        let maskLong = cidr === 0 ? 0 : (~0 << (32 - cidr)) >>> 0;
+        let wildcardLong = (~maskLong) >>> 0;
+        let ipLong = ipToLong(ipStr);
+        let netLong = (ipLong & maskLong) >>> 0;
+        let bcastLong = (netLong | wildcardLong) >>> 0;
+
+        let maskStr = longToIp(maskLong);
+        let wildcardStr = longToIp(wildcardLong);
+        let netStr = longToIp(netLong);
+        let bcastStr = longToIp(bcastLong);
+
+        let hosts = cidr >= 31 ? (cidr === 31 ? 2 : 1) : Math.pow(2, 32 - cidr) - 2;
+        let rangeStr = "";
+        if (cidr === 32) rangeStr = `${ipStr} (Host duy nhất)`;
+        else if (cidr === 31) rangeStr = `${longToIp(netLong)} - ${longToIp(bcastLong)}`;
+        else rangeStr = `${longToIp(netLong + 1)} ⟶ ${longToIp(bcastLong - 1)}`;
+
+        out.innerHTML = `
+            ${ipStr !== "0.0.0.0" ? `<div class="row"><b>IP Nhập Vào:</b> <span class="val">${ipStr}</span></div><hr>` : ''}
+            <div class="row"><b>Network ID:</b> <span class="val">${netStr}</span></div>
+            <div class="row"><b>Broadcast:</b> <span class="val">${bcastStr}</span></div>
+            <div class="row"><b>Dải IP khả dụng:</b><br><span class="highlight">${rangeStr}</span></div>
+            <hr>
+            <div class="row"><b>Subnet Mask:</b> <span class="val">${maskStr}</span> (/${cidr})</div>
+            <div class="row"><b>Wildcard Mask:</b> <span class="val">${wildcardStr}</span></div>
+            <div class="row"><b>Số Host khả dụng:</b> <span class="val">${hosts.toLocaleString()}</span></div>
+        `;
+        out.style.display = 'block';
+    } catch (e) {
+        err.innerText = 'Định dạng IP hoặc Subnet không hợp lệ!';
+    }
+}
+
+function maskToCidr(mask) {
+    let parts = mask.split('.');
+    if (parts.length !== 4) return null;
+    let bin = parts.map(p => parseInt(p, 10).toString(2).padStart(8, '0')).join('');
+    if (!/^1*0*$/.test(bin)) return null;
+    return (bin.match(/1/g) || []).length;
+}
+</script>
+
+</body>
+</html>
